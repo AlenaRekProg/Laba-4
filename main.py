@@ -1,6 +1,6 @@
 from typing import Annotated
 from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import create_engine, Column, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -11,27 +11,14 @@ from passlib.context import CryptContext
 import jwt
 from jwt.exceptions import InvalidTokenError
 from datetime import datetime, timedelta, timezone
-
-#  лаба 2
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
-
-
-
-
-
-
-
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
-# Создание объекта FastAPI
 app = FastAPI()
 
-# Настройка базы данных MySQL
 SQLALCHEMY_DATABASE_URL = "mysql+pymysql://isp_r_Rekunkova:12345@77.91.86.135/isp_r_Rekunkova"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
@@ -42,10 +29,8 @@ SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Определяем схему для авторизации
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Определение модели SQLAlchemy для пользователя
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -55,15 +40,13 @@ class User(Base):
     hashed_password = Column(String(100))
     disabled = Column(Boolean, default=False)
 
-# Создание таблиц в базе данных
 Base.metadata.create_all(bind=engine)
 
-# Определение Pydantic модели для пользователя
 class UserCreate(BaseModel):
-    username: str
-    email: str
+    username: str = Field(..., min_length=1)
+    email: EmailStr
     full_name: str | None = None
-    password: str
+    password: str = Field(..., min_length=1)
 
 class Token(BaseModel):
     access_token: str
@@ -73,10 +56,10 @@ class TokenData(BaseModel):
     username: str | None = None
 
 class UserUpdate(BaseModel):
-    username: str | None = None
-    email: str | None = None
+    username: str | None = Field(None, min_length=1)
+    email: EmailStr | None = None
     full_name: str | None = None
-    password: str | None = None
+    password: str | None = Field(None, min_length=1)
     disabled: bool | None = None
 
 class UserResponse(BaseModel):
@@ -88,7 +71,6 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# Зависимость для получения сессии базы данных
 def get_db():
     db = SessionLocal()
     try:
@@ -96,7 +78,6 @@ def get_db():
     finally:
         db.close()
 
-# Получение текущего пользователя по токену
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -121,7 +102,6 @@ async def get_current_active_user(current_user: Annotated[User, Depends(get_curr
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-# Маршрут для получения пользователя по ID
 def get_user(user_name: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == user_name).first()
     if user is None:
@@ -164,7 +144,6 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# Маршрут для удаления пользователя по ID
 @app.delete("/users/{user_id}", response_model=UserResponse)
 async def delete_user(user_id: int, current_user: Annotated[User, Depends(get_current_active_user)], db: Session = Depends(get_db)):
     if current_user.id != user_id:
@@ -178,7 +157,6 @@ async def delete_user(user_id: int, current_user: Annotated[User, Depends(get_cu
     db.commit()
     return user
 
-# Маршрут для обновления пользователя
 @app.put("/users/{user_id}", response_model=UserResponse)
 async def update_user(user_id: int, user_update: UserUpdate, current_user: Annotated[User, Depends(get_current_active_user)], db: Session = Depends(get_db)):
     if current_user.id != user_id:
@@ -248,11 +226,6 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=400, detail="Username or Email already registered")
 
-
-
-
-#  Лаба 2
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 origins = [
@@ -260,29 +233,18 @@ origins = [
 "https://localhost.tiangolo.com",
 "http://localhost",
 "http://localhost:8080",
+"http://allowed-origin.com",
 ]
 app.add_middleware(
 CORSMiddleware,
-# allow_origins=origins,
-allow_origins=["*"],
+# allow_origins=["*"],
+allow_origins=origins,
 allow_credentials=True,
 allow_methods=["*"],
 allow_headers=["*"],
 )
 
-
-
-
-
 @app.get("/", response_class=HTMLResponse)
 async def get_client():
     with open("static/index.html", "r") as file:
         return file.read()
-    
-
-
-
-
-
-
-
